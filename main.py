@@ -3,41 +3,36 @@ from pruner import Pruner
 from data import DatasetLoader
 import torch
 from utils import StatCollector, calculate_sparsity
+from quantizer import Quantizer
+import os
 
 # Example usage
+model_name = 'alexnet'
+dataset_name = 'cifar10'
+session_name=f'{model_name}_{dataset_name}'
 loader = ModelLoader()
-model = loader.load_model('alexnet')
+model = loader.load_model(model_name)
+os.makedirs(f'models/{session_name}', exist_ok=True)
 
 # Define data loading
-dataset_loader = DatasetLoader('cifar10')
+dataset_loader = DatasetLoader(dataset_name)
 trainloader, testloader = dataset_loader.load_data()
 
 # Initialize stat collector
-stat_collector = StatCollector()
+stat_collector = StatCollector(folder=f'models/{session_name}')
 
-# Initailize trainer and pruner
-trainer = ModelTrainer(model, trainloader, testloader, stat_collector, learning_rate=5e-4)
-pruner = Pruner(pruning_threshold=1e-4)
+# Initialize model trainer
+trainer = ModelTrainer(model, trainloader, testloader, stat_collector, learning_rate=5e-4, session_name=session_name )
 
+# Initial Training
+trainer.train_baseline(epochs=10)
+print('Finish Training Baseline')
 
-num_stages = 10
-num_epochs = 3
-sparsity = calculate_sparsity(model)
-print(f"Sparsity before pruning: {sparsity:.6%}")
-for stage in range(num_stages):
-    print(f"Stage {stage + 1}/{num_stages}")
+# Pruning Stage
+trainer.train_and_prune(stages=10, epochs=1)
+print('Finish Pruning Stage')
 
-    # Train the model
-    trainer.train_and_evaluate(num_epochs)
-
-    # Prune the network
-    model = pruner.prune_network(model)
-
-    # Calculate and print sparsity
-    sparsity = ModelTrainer.calculate_sparsity(model)
-    print(f"Sparsity after stage {stage + 1}: {sparsity:.6%}")
-
-    stat_collector.log_sparsity(sparsity)
-
-    # Plotting the statistics after each stage
-    stat_collector.plot_stats(interval=10)
+# Quantization Stage
+# model.load_state_dict(torch.load('model_prune_stage_3.pth'), strict=False)
+trainer.train_and_quantize(epochs=10)
+print('Finish Quantization Stage')

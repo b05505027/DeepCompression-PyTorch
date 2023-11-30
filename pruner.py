@@ -14,6 +14,6 @@ class Pruner:
     def create_pruning_mask(self, weight_tensor):
         mean = weight_tensor.abs().mean()
         std = weight_tensor.abs().std()
-        mask = weight_tensor.abs() > mean - std
+        mask = weight_tensor.abs() > mean - 0.5*std
         return mask
 

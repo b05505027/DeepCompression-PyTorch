@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch
-
+import json
 class StatCollector:
-    def __init__(self):
+    def __init__(self, folder='default'):
+        self.folder = folder
         self.iteration_loss = []
         self.epoch_accuracy = []
         self.stage_sparsity = []
@@ -17,7 +18,12 @@ class StatCollector:
     def log_sparsity(self, sparsity):
         self.stage_sparsity.append(sparsity)
 
-    def plot_stats(self, interval=10):
+    def clear_stats(self):
+        self.iteration_loss = []
+        self.epoch_accuracy = []
+        self.stage_sparsity = []
+    
+    def plot_stats(self, interval=10, prefix=""):
         # Plot loss per iteration
         if len(self.iteration_loss) > 0:
             plt.figure(figsize=(12, 4))
@@ -47,7 +53,10 @@ class StatCollector:
             plt.legend()
 
         plt.tight_layout()
-        plt.savefig('plot.png')
+        plt.savefig(f'{self.folder}/{prefix}_stats.png')
+        # also dump the stats to json
+        with open(f'{self.folder}/{prefix}_stats.json', 'w') as f:
+            json.dump({'iteration_loss': self.iteration_loss, 'epoch_accuracy': self.epoch_accuracy, 'stage_sparsity': self.stage_sparsity}, f)
         plt.close('all')
 
 def calculate_sparsity(model):

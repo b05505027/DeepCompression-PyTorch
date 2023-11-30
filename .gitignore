@@ -2,5 +2,5 @@ test.py
 data
 __pycache__
 *.png
-quantizer.py
 huffman_encoder.py
+models
