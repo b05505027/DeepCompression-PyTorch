@@ -6,6 +6,7 @@ from tqdm import tqdm
 from utils import StatCollector, calculate_sparsity
 from pruner import Pruner
 from quantizer import Quantizer
+from lenets import LeNet300, LeNet5
 
 class ModelLoader:
     @staticmethod
@@ -15,6 +16,10 @@ class ModelLoader:
             model.classifier[6] = nn.Linear(4096, 10)
         elif model_name.lower() == 'vgg16':
             model = models.vgg16(weights=None)
+        elif model_name.lower() == 'lenet300':
+            model = LeNet300()
+        elif model_name.lower() == 'lenet5':
+            model = LeNet5()
         else:
             raise ValueError("Unsupported model. Please choose 'AlexNet' or 'VGG16'.")
         return model
@@ -27,15 +32,16 @@ class ModelTrainer:
         self.testloader = testloader
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=learning_rate)
         self.stat_collector = stat_collector
         self.device = torch.device('mps:0') if torch.backends.mps.is_available() else 'cpu'
         self.model.to(self.device)
         self.pruner = Pruner(pruning_threshold=1e-4)
         self.quantizer = Quantizer(self.model)
     
-    def quantize_model(self):
+    def quantize_model(self, conv_bit=8, fc_bit=5):
         #self.quantizer.load_index_matrices(folder=f'models/{self.session_name})
-        self.quantizer.quantize_weights(folder=f'models/{self.session_name}')
+        self.quantizer.quantize_weights(folder=f'models/{self.session_name}', conv_bit=conv_bit, fc_bit=fc_bit)
         torch.save(self.model.state_dict(), f"models/{self.session_name}/quantized_{0}.pth")
 
     def evaluate(self):
@@ -75,7 +81,7 @@ class ModelTrainer:
                 if self.stat_collector:
                     self.stat_collector.log_loss(loss.item())
                     if i % 10 == 0:
-                        self.stat_collector.plot_stats(interval=10, prefix='baseline')
+                        self.stat_collector.plot_stats(prefix=f'baseline_{self.optimizer.param_groups[0]["lr"]}')
         
             # Evaluate after each epoch
             accuracy = self.evaluate()
@@ -86,7 +92,14 @@ class ModelTrainer:
             torch.save(self.model.state_dict(), f"models/{self.session_name}/baseline_{epoch + 1}.pth")
         self.stat_collector.clear_stats()
 
-    def train_and_prune(self, stages, epochs):
+    def train_and_prune(self, stages, epochs, threshold=1e-4):
+        
+        self.pruner.set_threshold(threshold)
+        self.model = self.pruner.prune_network(self.model)
+        sparsity = calculate_sparsity(self.model)
+        self.stat_collector.log_sparsity(sparsity)
+        self.stat_collector.plot_stats(prefix=f'prune_t={threshold}_lr={self.optimizer.param_groups[0]["lr"]}')
+        
         for stage in range(stages):
             for epoch in range(epochs):
                 self.model.train()
@@ -108,7 +121,7 @@ class ModelTrainer:
                     if self.stat_collector:
                         self.stat_collector.log_loss(loss.item())
                         if i % 10 == 0:
-                            self.stat_collector.plot_stats(interval=10, prefix='prune')
+                            self.stat_collector.plot_stats(prefix=f'prune_t={threshold}_lr={self.optimizer.param_groups[0]["lr"]}')
                     
 
                 # Evaluate after each epoch
@@ -121,13 +134,13 @@ class ModelTrainer:
             sparsity = calculate_sparsity(self.model)
             pbar.set_description(f"Sparsity after stage {stage + 1}: {sparsity:.6%}")
             self.stat_collector.log_sparsity(sparsity)
-            self.stat_collector.plot_stats(interval=10,prefix='prune')
+            self.stat_collector.plot_stats(prefix=f'prune_t={threshold}_lr={self.optimizer.param_groups[0]["lr"]}')
 
             # save the model:
             torch.save(self.model.state_dict(), f"models/{self.session_name}/prune_{stage + 1}.pth")
         self.stat_collector.clear_stats()
-    def train_and_quantize(self, epochs=10):
-        self.quantize_model()
+    def train_and_quantize(self, epochs=10, conv_bit=8, fc_bit=5):
+        self.quantize_model(conv_bit, fc_bit)
         for epoch in range(epochs):
             self.model.train()
             running_loss = 0.0
@@ -179,7 +192,7 @@ class ModelTrainer:
                 if self.stat_collector:
                     self.stat_collector.log_loss(loss.item())
                     if i % 10 == 0:
-                        self.stat_collector.plot_stats(interval=10, prefix='quantize')
+                        self.stat_collector.plot_stats(prefix=f'quantize_lr={self.optimizer.param_groups[0]["lr"]}')
             
             
             # Evaluate after each epoch

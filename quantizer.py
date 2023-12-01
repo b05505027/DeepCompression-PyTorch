@@ -13,12 +13,12 @@ class Quantizer:
             if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
                 self.index_matrices[name] = torch.load(f'{folder}/index_matrices/' + name + '.pth')
 
-    def quantize_weights(self, folder='default'):
+    def quantize_weights(self, folder='default', conv_bit=8, fc_bit=5):
         for name, module in tqdm(self.model.named_modules(), desc='Quantizing weights', total=len(list(self.model.named_modules()))):
             if isinstance(module, torch.nn.Conv2d):
-                self.index_matrices[name] = self._create_index_matrix(module.weight, n_clusters=256)
+                self.index_matrices[name] = self._create_index_matrix(module.weight, n_clusters=np.power(2, conv_bit))
             elif isinstance(module, torch.nn.Linear):
-                self.index_matrices[name] = self._create_index_matrix(module.weight, n_clusters=32)
+                self.index_matrices[name] = self._create_index_matrix(module.weight, n_clusters=np.power(2, fc_bit))
             else:
                 continue
             # save index matrix, which contains tensor of indices

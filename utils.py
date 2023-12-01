@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch
@@ -23,7 +25,7 @@ class StatCollector:
         self.epoch_accuracy = []
         self.stage_sparsity = []
     
-    def plot_stats(self, interval=10, prefix=""):
+    def plot_stats(self, interval=50, prefix=""):
         # Plot loss per iteration
         if len(self.iteration_loss) > 0:
             plt.figure(figsize=(12, 4))

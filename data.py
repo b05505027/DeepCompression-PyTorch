@@ -29,6 +29,14 @@ class DatasetLoader:
         if self.dataset_name.lower() == 'cifar10':
             trainset = datasets.CIFAR10(root=self.root_dir, train=True, download=True, transform=self.train_transform)
             testset = datasets.CIFAR10(root=self.root_dir, train=False, download=True, transform=self.test_transform)
+        elif self.dataset_name.lower() == 'mnist':
+
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307,), (0.3081,))
+            ])
+            trainset = datasets.MNIST(root=self.root_dir, train=True, download=True, transform=transform)
+            testset = datasets.MNIST(root=self.root_dir, train=False, download=True, transform=transform)
         
         # Add more datasets here if needed
         else:
