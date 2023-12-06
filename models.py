@@ -7,6 +7,9 @@ from utils import StatCollector, calculate_sparsity
 from pruner import Pruner
 from quantizer import Quantizer
 from lenets import LeNet300, LeNet5
+import os
+import torch.nn.utils.prune as prune
+import numpy as np
 
 class ModelLoader:
     @staticmethod
@@ -40,9 +43,13 @@ class ModelTrainer:
         self.quantizer = Quantizer(self.model)
     
     def quantize_model(self, conv_bit=8, fc_bit=5):
-        #self.quantizer.load_index_matrices(folder=f'models/{self.session_name})
-        self.quantizer.quantize_weights(folder=f'models/{self.session_name}', conv_bit=conv_bit, fc_bit=fc_bit)
-        torch.save(self.model.state_dict(), f"models/{self.session_name}/quantized_{0}.pth")
+        # if the model is already quantized, load the index matrices
+        if os.path.exists(f'models/{self.session_name}/index_matrices'):
+            self.quantizer.load_index_matrices(folder=f'models/{self.session_name}')
+            self.model.load_state_dict(torch.load(f"models/{self.session_name}/quantized_{0}.pth"))
+        else:
+            self.quantizer.quantize_weights(folder=f'models/{self.session_name}', conv_bit=conv_bit, fc_bit=fc_bit)
+            torch.save(self.model.state_dict(), f"models/{self.session_name}/quantized_{0}.pth")
 
     def evaluate(self):
         self.model.eval()
@@ -94,13 +101,14 @@ class ModelTrainer:
 
     def train_and_prune(self, stages, epochs, threshold=1e-4):
         
+        # initialize the pruner
         self.pruner.set_threshold(threshold)
-        self.model = self.pruner.prune_network(self.model)
-        sparsity = calculate_sparsity(self.model)
-        self.stat_collector.log_sparsity(sparsity)
-        self.stat_collector.plot_stats(prefix=f'prune_t={threshold}_lr={self.optimizer.param_groups[0]["lr"]}')
+
         
         for stage in range(stages):
+            
+            # prune the model for each stage
+            self.model = self.pruner.prune_network(self.model)
             for epoch in range(epochs):
                 self.model.train()
                 running_loss = 0.0
@@ -115,6 +123,7 @@ class ModelTrainer:
 
                     loss = self.criterion(outputs, labels)
                     loss.backward()
+
                     self.optimizer.step()
                     running_loss += loss.item()
 
@@ -129,16 +138,19 @@ class ModelTrainer:
                 if self.stat_collector:
                     self.stat_collector.log_accuracy(accuracy)
                 pbar.set_description(f"Pruning: Epoch {epoch + 1}/{epochs}, Loss: {running_loss / len(self.trainloader)}, Accuracy: {100 * accuracy:.2f}%")
-            
-            self.model = self.pruner.prune_network(self.model)
-            sparsity = calculate_sparsity(self.model)
-            pbar.set_description(f"Sparsity after stage {stage + 1}: {sparsity:.6%}")
-            self.stat_collector.log_sparsity(sparsity)
-            self.stat_collector.plot_stats(prefix=f'prune_t={threshold}_lr={self.optimizer.param_groups[0]["lr"]}')
 
-            # save the model:
+                # calculate sparsity
+                sparsity = calculate_sparsity(self.model)
+                self.stat_collector.log_sparsity(sparsity)
+                self.stat_collector.plot_stats(prefix=f'prune_t={threshold}_lr={self.optimizer.param_groups[0]["lr"]}')
+            
+
+            self.model = self.pruner.apply_pruning(self.model)
             torch.save(self.model.state_dict(), f"models/{self.session_name}/prune_{stage + 1}.pth")
+        
         self.stat_collector.clear_stats()
+
+
     def train_and_quantize(self, epochs=10, conv_bit=8, fc_bit=5):
         self.quantize_model(conv_bit, fc_bit)
         for epoch in range(epochs):
@@ -146,29 +158,28 @@ class ModelTrainer:
             running_loss = 0.0
             pbar = tqdm(enumerate(self.trainloader), total=len(self.trainloader),desc=f"Epoch {epoch + 1}/{epochs}")
             for i, data in pbar:
-                
-                
+
                 ############################################################################################################
-                def check_unique_values_in_conv2d():
+                def check_unique_values():
                     unique_values_count = {}
                     for name, module in self.model.named_modules():
-                        if isinstance(module, torch.nn.Conv2d):
+                        if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
                             unique_values = torch.unique(module.weight.data)
                             unique_values_count[name] = [len(unique_values)]
                         # also check the sum
-                        if isinstance(module, torch.nn.Conv2d):
+                        if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
                             unique_values_count[name].append(torch.sum(module.weight.data))
                     return unique_values_count
                 '''' Check the unique values of each layer's weight tensor '''
-                unique_values_count = check_unique_values_in_conv2d()
-                if i % 10 == 0:
+                unique_values_count = check_unique_values()
+                if i % 100 == 0:
                     for layer_name, count in unique_values_count.items():
                         print(f"{layer_name} has {count[0]} unique values")
                         print(f"{layer_name} has sum of {count[1]}")
-                        if count == 3:
-                            print(f"--> {layer_name} satisfies the 3 unique values condition")
+                        if count[0] == np.power(2, conv_bit) + 1 or count[0] == np.power(2, fc_bit) + 1:
+                            print(f"--> {layer_name} satisfies the {count[0]} unique values condition")
                         else:
-                            print(f"--> {layer_name} does not satisfy the 3  unique values condition")
+                            print(f"--> {layer_name} does not satisfy the {np.power(2, fc_bit)} or {np.power(2, conv_bit)}  unique values condition")
                 ############################################################################################################
             
 
@@ -203,5 +214,10 @@ class ModelTrainer:
             
             # save the model
             torch.save(self.model.state_dict(), f"models/{self.session_name}/quantized_{epoch + 1}.pth")
+
+            sparsity = calculate_sparsity(self.model)
+            self.stat_collector.log_sparsity(sparsity)
+            self.stat_collector.plot_stats(prefix=f'quantize_lr={self.optimizer.param_groups[0]["lr"]}')
+            
         self.stat_collector.clear_stats()    
 

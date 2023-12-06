@@ -11,12 +11,15 @@ class Pruner:
                 # use the default pruner
                 prune.ln_structured(module, name='weight', amount=self.pruning_threshold, n=2, dim=0)
                 prune.custom_from_mask(module, name='weight', mask=self.create_pruning_mask(module.weight))
+                # prune.remove(module, 'weight')
+        return model
+    def apply_pruning(self, model):
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
+                prune.remove(module, 'weight')
         return model
 
     def create_pruning_mask(self, weight_tensor):
-        # mean = weight_tensor.abs().mean()
-        # std = weight_tensor.abs().std()
-        # mask = weight_tensor.abs() > mean - 0.5*std
         mask = weight_tensor.abs() > self.pruning_threshold
         return mask
     

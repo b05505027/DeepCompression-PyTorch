@@ -49,7 +49,7 @@ class StatCollector:
         if len(self.stage_sparsity) > 0:
             plt.subplot(1, 3, 3)
             plt.plot(self.stage_sparsity, label='Sparsity per Stage')
-            plt.xlabel('Stage')
+            plt.xlabel('Epoch')
             plt.ylabel('Sparsity')
             plt.title('Sparsity per Stage')
             plt.legend()
