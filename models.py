@@ -35,7 +35,6 @@ class ModelTrainer:
         self.testloader = testloader
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=learning_rate)
         self.stat_collector = stat_collector
         self.device = torch.device('mps:0') if torch.backends.mps.is_available() else 'cpu'
         self.model.to(self.device)
@@ -140,8 +139,8 @@ class ModelTrainer:
                 pbar.set_description(f"Pruning: Epoch {epoch + 1}/{epochs}, Loss: {running_loss / len(self.trainloader)}, Accuracy: {100 * accuracy:.2f}%")
 
                 # calculate sparsity
-                sparsity = calculate_sparsity(self.model)
-                self.stat_collector.log_sparsity(sparsity)
+                total_sparsity, _ = calculate_sparsity(self.model)
+                self.stat_collector.log_sparsity(total_sparsity)
                 self.stat_collector.plot_stats(prefix=f'prune_t={threshold}_lr={self.optimizer.param_groups[0]["lr"]}')
             
 
@@ -151,6 +150,17 @@ class ModelTrainer:
         self.stat_collector.clear_stats()
 
 
+    def check_unique_values():
+        unique_values_count = {}
+        for name, module in self.model.named_modules():
+            if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
+                unique_values = torch.unique(module.weight.data)
+                unique_values_count[name] = [len(unique_values)]
+            # also check the sum
+            if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
+                unique_values_count[name].append(torch.sum(module.weight.data))
+        return unique_values_count
+
     def train_and_quantize(self, epochs=10, conv_bit=8, fc_bit=5):
         self.quantize_model(conv_bit, fc_bit)
         for epoch in range(epochs):
@@ -159,30 +169,13 @@ class ModelTrainer:
             pbar = tqdm(enumerate(self.trainloader), total=len(self.trainloader),desc=f"Epoch {epoch + 1}/{epochs}")
             for i, data in pbar:
 
-                ############################################################################################################
-                def check_unique_values():
-                    unique_values_count = {}
-                    for name, module in self.model.named_modules():
-                        if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
-                            unique_values = torch.unique(module.weight.data)
-                            unique_values_count[name] = [len(unique_values)]
-                        # also check the sum
-                        if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
-                            unique_values_count[name].append(torch.sum(module.weight.data))
-                    return unique_values_count
-                '''' Check the unique values of each layer's weight tensor '''
+                
+                '''' (Debug) Check the unique values of each layer's weight tensor '''
                 unique_values_count = check_unique_values()
                 if i % 100 == 0:
                     for layer_name, count in unique_values_count.items():
-                        print(f"{layer_name} has {count[0]} unique values")
-                        print(f"{layer_name} has sum of {count[1]}")
-                        if count[0] == np.power(2, conv_bit) + 1 or count[0] == np.power(2, fc_bit) + 1:
-                            print(f"--> {layer_name} satisfies the {count[0]} unique values condition")
-                        else:
-                            print(f"--> {layer_name} does not satisfy the {np.power(2, fc_bit)} or {np.power(2, conv_bit)}  unique values condition")
-                ############################################################################################################
-            
-
+                        assert count[0] == np.power(2, conv_bit) + 1 or count[0] == np.power(2, fc_bit) + 1, f"--> {layer_name} does not satisfy the {np.power(2, fc_bit)} or {np.power(2, conv_bit)}  unique values condition"
+                
                 inputs, labels = data
                 inputs = inputs.to(self.device)
                 labels = labels.to(self.device)
@@ -215,9 +208,11 @@ class ModelTrainer:
             # save the model
             torch.save(self.model.state_dict(), f"models/{self.session_name}/quantized_{epoch + 1}.pth")
 
-            sparsity = calculate_sparsity(self.model)
-            self.stat_collector.log_sparsity(sparsity)
+            total_sparsity, _ = calculate_sparsity(self.model)
+            self.stat_collector.log_sparsity(total_sparsity)
             self.stat_collector.plot_stats(prefix=f'quantize_lr={self.optimizer.param_groups[0]["lr"]}')
             
         self.stat_collector.clear_stats()    
+
+
 
