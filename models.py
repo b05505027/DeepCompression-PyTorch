@@ -28,7 +28,7 @@ class ModelLoader:
         return model
 
 class ModelTrainer:
-    def __init__(self, model, trainloader, testloader, stat_collector, learning_rate=3e-3,session_name='default'):
+    def __init__(self, model, trainloader, testloader, stat_collector, learning_rate=3e-3, session_name='default'):
         self.model = model
         self.session_name = session_name
         self.trainloader = trainloader
@@ -150,7 +150,7 @@ class ModelTrainer:
         self.stat_collector.clear_stats()
 
 
-    def check_unique_values():
+    def check_unique_values(self):
         unique_values_count = {}
         for name, module in self.model.named_modules():
             if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
@@ -171,7 +171,7 @@ class ModelTrainer:
 
                 
                 '''' (Debug) Check the unique values of each layer's weight tensor '''
-                unique_values_count = check_unique_values()
+                unique_values_count = self.check_unique_values()
                 if i % 100 == 0:
                     for layer_name, count in unique_values_count.items():
                         assert count[0] == np.power(2, conv_bit) + 1 or count[0] == np.power(2, fc_bit) + 1, f"--> {layer_name} does not satisfy the {np.power(2, fc_bit)} or {np.power(2, conv_bit)}  unique values condition"

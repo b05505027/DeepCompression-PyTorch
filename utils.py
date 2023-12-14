@@ -13,7 +13,7 @@ class StatCollector:
         self.folder = folder
         self.iteration_loss = []
         self.epoch_accuracy = []
-        self.stage_sparsity = []
+        self.epoch_sparsity = []
 
     def log_loss(self, loss):
         self.iteration_loss.append(loss)
@@ -22,12 +22,12 @@ class StatCollector:
         self.epoch_accuracy.append(accuracy)
 
     def log_sparsity(self, sparsity):
-        self.stage_sparsity.append(sparsity)
+        self.epoch_sparsity.append(sparsity)
 
     def clear_stats(self):
         self.iteration_loss = []
         self.epoch_accuracy = []
-        self.stage_sparsity = []
+        self.epoch_sparsity = []
 
     def plot_distribution(self, distribution, distribution_type, prefix):
         """
@@ -47,7 +47,8 @@ class StatCollector:
 
             for i, (layer_name, values) in enumerate(distribution.items()):
                 plt.subplot(num_layers, 1, i + 1)
-                sorted_values = dict(sorted(values.items()))
+                # Ensure keys are integers if they are numeric
+                sorted_values = dict(sorted(values.items(), key=lambda x: float(x[0])))
                 plt.bar(sorted_values.keys(), sorted_values.values(), color=color_list[i])
 
                 plt.xlabel(f'{distribution_type} Value', fontsize=12)
@@ -63,7 +64,7 @@ class StatCollector:
     
     def plot_stats(self, interval=50, prefix=""):
         """
-        Plot statistics including loss per iteration, accuracy per epoch, and sparsity per stage
+        Plot statistics including loss per interval iteration, accuracy per epoch, and sparsity per stage
         in a colorful and professional style.
         
         Args:
@@ -75,12 +76,13 @@ class StatCollector:
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))  # Adjust the size as needed
 
         # Check if there are stats to plot
-        stats_available = any(len(stat) > 0 for stat in [self.iteration_loss, self.epoch_accuracy, self.stage_sparsity])
+        stats_available = any(len(stat) > 0 for stat in [self.iteration_loss, self.epoch_accuracy, self.epoch_sparsity])
         
         if not stats_available:
             print("No statistics available to plot.")
             return
-
+        epochs = []
+        stages = []
         # Plot loss per iteration
         if self.iteration_loss:
             axes[0].plot(range(0, len(self.iteration_loss), interval), self.iteration_loss[::interval], label='Loss per Iteration', linewidth=2, color='tab:blue')
@@ -91,7 +93,7 @@ class StatCollector:
 
         # Plot accuracy per epoch
         if self.epoch_accuracy:
-            epochs = list(range(len(self.epoch_accuracy)))
+            epochs = list(range(1, len(self.epoch_accuracy)+1))
             axes[1].plot(epochs, self.epoch_accuracy, label='Accuracy per Epoch', linewidth=2, color='tab:orange')
             axes[1].set_xlabel('Epoch')
             axes[1].set_ylabel('Accuracy')
@@ -99,9 +101,8 @@ class StatCollector:
             axes[1].legend()
 
         # Plot sparsity per stage
-        if self.stage_sparsity:
-            stages = list(range(len(self.stage_sparsity)))
-            axes[2].plot(stages, self.stage_sparsity, label='Sparsity per Stage', linewidth=2, color='tab:green')
+        if self.epoch_sparsity:
+            axes[2].plot(epochs, self.epoch_sparsity, label='Sparsity per Stage', linewidth=2, color='tab:green')
             axes[2].set_xlabel('Stage')
             axes[2].set_ylabel('Sparsity')
             axes[2].set_title('Sparsity per Stage')
@@ -115,7 +116,7 @@ class StatCollector:
         stats_dict = {
             'iteration_loss': self.iteration_loss,
             'epoch_accuracy': list(zip(epochs, self.epoch_accuracy)),
-            'stage_sparsity': list(zip(stages, self.stage_sparsity)),
+            'epoch_sparsity': list(zip(epochs, self.epoch_sparsity)),
         }
         with open(f'{self.folder}/{prefix}_stats.json', 'w') as f:
             json.dump(stats_dict, f, indent=4)

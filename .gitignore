@@ -1,7 +1,7 @@
 test.py
-data
+data/*
+models/*
 __pycache__
 *.png
 huffman_encoder.py
-models
 resource.py

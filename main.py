@@ -36,8 +36,8 @@ class DeepCompression:
         Sets up the environment including creating session directories, saving configurations,
         and initializing the model, data loaders, and statistics collector.
         """
-        session_name = f"{self.model_name}_{self.dataset_name}"
-        models_directory = f'models/{session_name}'
+        self.session_name = f"{self.model_name}_{self.dataset_name}"
+        models_directory = f'models/{self.session_name}'
         os.makedirs(models_directory, exist_ok=True)
 
         config_path = os.path.join(models_directory, f"{self.stage}_config.json")
@@ -54,26 +54,26 @@ class DeepCompression:
         self.stat_collector = StatCollector(folder=models_directory)
 
     def train_baseline(self):
-        trainer = ModelTrainer(self.model, self.train_loader, self.test_loader, self.stat_collector, learning_rate=self.learning_rate)
+        trainer = ModelTrainer(self.model, self.train_loader, self.test_loader, self.stat_collector, learning_rate=self.learning_rate, session_name=self.session_name)
         trainer.train_baseline(epochs=self.epochs)
         print('Finished Training Baseline')
 
     def perform_pruning(self):
-        self.model.load_state_dict(torch.load(f'models/{self.model_to_prune}'), strict=False)
-        trainer = ModelTrainer(self.model, self.train_loader, self.test_loader, self.stat_collector, learning_rate=self.pruning_learning_rate)
+        self.model.load_state_dict(torch.load(f'models/{self.session_name}/{self.model_to_prune}'), strict=False)
+        trainer = ModelTrainer(self.model, self.train_loader, self.test_loader, self.stat_collector, learning_rate=self.pruning_learning_rate, session_name=self.session_name)
         trainer.train_and_prune(stages=self.pruning_stages, epochs=self.pruning_epochs, threshold=self.pruning_threshold)
         print('Finished Pruning Stage')
 
     def execute_quantization(self):
-        self.model.load_state_dict(torch.load(f'models/{self.model_to_quantize}'), strict=True)
+        self.model.load_state_dict(torch.load(f'models/{self.session_name}/{self.model_to_quantize}'), strict=True)
         total_sparsity, _ = calculate_sparsity(self.model)
         print(f'Sparsity of the model before quantization: {total_sparsity}')
-        trainer = ModelTrainer(self.model, self.train_loader, self.test_loader, self.stat_collector, learning_rate=self.quantization_learning_rate)
+        trainer = ModelTrainer(self.model, self.train_loader, self.test_loader, self.stat_collector, learning_rate=self.quantization_learning_rate, session_name=self.session_name)
         trainer.train_and_quantize(epochs=self.quantization_epochs, conv_bit=self.conv_quantize_bit, fc_bit=self.fc_quantize_bit)
         print('Finished Quantization Stage')
 
     def conduct_encoding(self):
-        self.model.load_state_dict(torch.load(f'models/{self.model_to_encode}'), strict=True)
+        self.model.load_state_dict(torch.load(f'models/{self.session_name}/{self.model_to_encode}'), strict=True)
         _, layer_sparsity = calculate_sparsity(self.model)
         encoder = Encoder()
         weight_summary = encoder.summarize_weights(self.model)
@@ -87,14 +87,14 @@ class DeepCompression:
 
     def main(self):
         # Stage logic
-        if stage == 'baseline':
-            train_baseline()
-        elif stage == 'pruning':
-            perform_pruning()
-        elif stage == 'quantization':
-            execute_quantization()
-        elif stage == 'encoding':
-            conduct_encoding()
+        if self.stage == 'baseline':
+            self.train_baseline()
+        elif self.stage == 'pruning':
+            self.perform_pruning()
+        elif self.stage == 'quantization':
+            self.execute_quantization()
+        elif self.stage == 'encoding':
+            self.conduct_encoding()
 
 if __name__ == '__main__':
 
@@ -105,28 +105,28 @@ if __name__ == '__main__':
         'dataset_name': 'mnist',
 
         # stage
-        'stage': 'baseline',
+        'stage': 'encoding',
 
         # basline training
         'learning_rate': 1e-2,
         'epochs': 100,
 
         # pruning
-        'model_to_prune': 'baseline_26.pth',
+        'model_to_prune': 'baseline_7.pth',
         'pruning_learning_rate': 1e-4,
         'pruning_epochs': 5, # number of epochs per pruning stage
         'pruning_stages': 50, # number of pruning stage
         'pruning_threshold': 0.068,
 
         # quantization
-        'model_to_quantize': 'prune_50.pth',
+        'model_to_quantize': 'prune_4.pth',
         'quantization_learning_rate': 1e-4,
         'quantization_epochs': 100,
         'conv_quantize_bit': 8,
         'fc_quantize_bit': 6,
 
         # encoding and summarize
-        'model_to_encode': 'quantized_100.pth',
+        'model_to_encode': 'quantized_8.pth',
         'index_bit': 5,
     }
     DeepCompression(config).main()
