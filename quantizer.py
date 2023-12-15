@@ -34,10 +34,13 @@ class Quantizer:
         original_shape = weight_tensor.shape
         flattened_weights = weight_tensor.detach().view(-1, 1)
         
+        
         # Identify non-zero weights
         non_zero_mask = flattened_weights != 0
         non_zero_weights = flattened_weights[non_zero_mask].cpu().numpy().reshape(-1, 1)
-
+        # if non_zero_weights is too small, then we don't need to quantize
+        if len(non_zero_weights) < n_clusters:
+            n_clusters = np.power(2, 5)
         # Apply K-means clustering to non-zero weights
         if len(non_zero_weights) > 0:
             min_weight = non_zero_weights.min()

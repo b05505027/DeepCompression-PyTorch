@@ -74,14 +74,26 @@ class DeepCompression:
 
     def conduct_encoding(self):
         self.model.load_state_dict(torch.load(f'models/{self.session_name}/{self.model_to_encode}'), strict=True)
-        _, layer_sparsity = calculate_sparsity(self.model)
+        total_sparsity, layer_sparsity = calculate_sparsity(self.model)
         encoder = Encoder()
         weight_summary = encoder.summarize_weights(self.model)
-        position_summary, _ = encoder.encode_sparse_weights(self.model, self.index_bit)
-        encoder.huffman_encoding(weight_summary)
-        encoder.huffman_encoding(position_summary)
+        position_summary, non_zero_lengths = encoder.encode_sparse_weights(self.model, self.index_bit)
+        weight_huffman_encoding,  weight_average_code_lengths = encoder.huffman_encoding(weight_summary)
+        position_huffman_encoding, position_average_code_lengths = encoder.huffman_encoding(position_summary)
         self.stat_collector.plot_distribution(position_summary, 'Position', 'before_encoding')
         self.stat_collector.plot_distribution(weight_summary, 'Weight', 'before_encoding')
+        model_report = summarize_model(self.model, 
+                        weight_huffman_encoding, 
+                        weight_average_code_lengths,
+                        position_huffman_encoding,
+                        position_average_code_lengths,
+                        self.index_bit,
+                        non_zero_lengths, 
+                        layer_sparsity, 
+                        total_sparsity)
+        # save model report as json
+        with open(f'models/{self.session_name}/model_report.json', 'w') as f:
+            json.dump(model_report, f, indent=4)
         print('Finished Encoding Stage')
 
 
@@ -101,32 +113,32 @@ if __name__ == '__main__':
     # based on the stage, the program will use different part of the config.
     config = {
         # model and dataset 
-        'model_name': 'lenet300',
+        'model_name': 'lenet5',
         'dataset_name': 'mnist',
 
         # stage
-        'stage': 'encoding',
+        'stage': 'quantization',
 
         # basline training
-        'learning_rate': 1e-2,
-        'epochs': 100,
+        'learning_rate': 1e-3,
+        'epochs': 500,
 
         # pruning
-        'model_to_prune': 'baseline_7.pth',
-        'pruning_learning_rate': 1e-4,
+        'model_to_prune': 'baseline_13.pth',
+        'pruning_learning_rate': 1e-3,
         'pruning_epochs': 5, # number of epochs per pruning stage
         'pruning_stages': 50, # number of pruning stage
-        'pruning_threshold': 0.068,
+        'pruning_threshold': 0.12,
 
         # quantization
-        'model_to_quantize': 'prune_4.pth',
+        'model_to_quantize': 'prune_24.pth',
         'quantization_learning_rate': 1e-4,
         'quantization_epochs': 100,
         'conv_quantize_bit': 8,
-        'fc_quantize_bit': 6,
+        'fc_quantize_bit': 5,
 
         # encoding and summarize
-        'model_to_encode': 'quantized_8.pth',
+        'model_to_encode': 'quantized_20.pth',
         'index_bit': 5,
     }
     DeepCompression(config).main()
